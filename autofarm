@@ -1,8 +1,8 @@
 --[[
-    Srilangish Hub - Cashier Autofarm
+    Srilangish Hub - Cashier Autofarm (VirtualUser Input Version)
     Features: Strictly targets CA$HIER models with an 'Open' part inside, 
-    ignores external/outside 'Open' parts, teleports to the blue void platform if none are available, 
-    grey square UI with default font, and `getgenv()` configuration.
+    uses VirtualUser for holding/clicking instead of mouse1press, 
+    teleports to the blue void platform if none are available, grey square UI, and getgenv configuration.
 ]]
 if not game:IsLoaded() then
     game.Loaded:Wait()
@@ -183,12 +183,11 @@ end
 
 local function holdScreenClick(duration, targetPart)
     local start = tick()
+    
+    -- Engage VirtualUser click hold
     pcall(function()
-        if mouse1press then
-            mouse1press()
-        else
-            VirtualUser:Button1Down(Vector2.new(), workspace.CurrentCamera.CFrame)
-        end
+        VirtualUser:CaptureController()
+        VirtualUser:Button1Down(Vector2.new(), workspace.CurrentCamera.CFrame)
     end)
 
     while tick() - start < duration do
@@ -201,22 +200,16 @@ local function holdScreenClick(duration, targetPart)
         
         equipCombat()
         
+        -- Keep VirtualUser holding down
         pcall(function()
-            if mouse1press then
-                mouse1press()
-            else
-                VirtualUser:Button1Down(Vector2.new(), workspace.CurrentCamera.CFrame)
-            end
+            VirtualUser:Button1Down(Vector2.new(), workspace.CurrentCamera.CFrame)
         end)
         RunService.Heartbeat:Wait()
     end
 
+    -- Release VirtualUser click
     pcall(function()
-        if mouse1release then
-            mouse1release()
-        else
-            VirtualUser:Button1Up(Vector2.new(), workspace.CurrentCamera.CFrame)
-        end
+        VirtualUser:Button1Up(Vector2.new(), workspace.CurrentCamera.CFrame)
     end)
 end
 
@@ -392,4 +385,4 @@ task.spawn(function()
     end
 end)
 
-print("[Srilangish] Void Fallback Cashier Autofarm Loaded")
+print("[Srilangish] VirtualUser Cashier Autofarm Loaded")
