@@ -1,15 +1,53 @@
 --[[
-    Srilangish Hub - Cashier Autofarm (Requires 'Open' part *inside*, ignores if 'Open' is *outside*)
+    Srilangish Hub - Cashier Autofarm
+    Features: Strictly targets CA$HIER models with an 'Open' part inside, 
+    ignores external/outside 'Open' parts, teleports to the blue void platform if none are available, 
+    grey square UI with default font, and `getgenv()` configuration.
 ]]
 if not game:IsLoaded() then
     game.Loaded:Wait()
 end
 
+-- ==================== CONFIGURATION (getgenv) ====================
+getgenv().SrilangishConfig = getgenv().SrilangishConfig or {
+    WebhookURL = "",
+    FPSRate = 60,
+    BlackTextures = false
+}
+
+local Config = getgenv().SrilangishConfig
+
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local VirtualUser = game:GetService("VirtualUser")
 local CoreGui = game:GetService("CoreGui")
+local Lighting = game:GetService("Lighting")
+local HttpService = game:GetService("HttpService")
 local player = Players.LocalPlayer
+
+-- Apply FPS Cap
+pcall(function()
+    if setfpscap and Config.FPSRate and Config.FPSRate > 0 then
+        setfpscap(Config.FPSRate)
+    end
+end)
+
+-- Apply Black Textures if enabled
+if Config.BlackTextures then
+    pcall(function()
+        for _, v in ipairs(Lighting:GetChildren()) do
+            v:Destroy()
+        end
+        Lighting.GlobalShadows = false
+        Lighting.FogEnd = 9e9
+        for _, part in ipairs(workspace:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.Material = Enum.Material.SmoothPlastic
+                part.Color = Color3.fromRGB(20, 20, 20)
+            end
+        end
+    end)
+end
 
 local character, humanoid, root
 local function setupCharacter(newChar)
@@ -30,6 +68,31 @@ local DELAY_BETWEEN_TARGETS = 0.35
 local VOID_Y = 500
 
 local startDHC = 0
+local visitedCount = 0
+
+-- ==================== WEBHOOK FUNCTION ====================
+local function sendWebhook(titleText, description)
+    if not Config.WebhookURL or Config.WebhookURL == "" then return end
+    local data = {
+        embeds = {{
+            title = titleText,
+            description = description,
+            color = 65280,
+            footer = {text = "Srilangish Farm • " .. os.date("%X")}
+        }}
+    }
+    pcall(function()
+        local req = (syn and syn.request) or (http and http.request) or http_request or request
+        if req then
+            req({
+                Url = Config.WebhookURL,
+                Method = "POST",
+                Headers = {["Content-Type"] = "application/json"},
+                Body = HttpService:JSONEncode(data)
+            })
+        end
+    end)
+end
 
 -- ==================== CREATE BLUE VOID PLATFORM ====================
 local voidPlatform = Instance.new("Part")
@@ -157,23 +220,40 @@ local function holdScreenClick(duration, targetPart)
     end)
 end
 
+-- Checks if a model named CA$HIER/CA$HIERS has an 'Open' part inside it and no 'Open' part outside
 local function isTargetValid(obj)
     if not obj or not obj.Parent or not obj:IsA("Model") then return false end
     
-    -- 1. Must have an "Open" part DIRECTLY INSIDE the cashier model (not deeply nested/outside)
-    local directOpen = obj:FindFirstChild("Open", false)
-    if not directOpen then
-        return false
-    end
-
-    -- 2. Ensure "Open" is not sticking out/parented outside or as a separate folder model layer
-    -- (checking that it is a direct child basepart of the cashier model)
-    if not directOpen:IsA("BasePart") then
+    local name = obj.Name
+    if name ~= "CA$HIER" and name ~= "CA$HIERS" then
         return false
     end
 
     local part = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
     if not part or not part.Parent or not part:IsDescendantOf(workspace) then return false end
+
+    -- Must have an "Open" part inside the cashier model
+    local hasOpenInside = false
+    for _, desc in ipairs(obj:GetDescendants()) do
+        if desc.Name == "Open" then
+            hasOpenInside = true
+            break
+        end
+    end
+
+    if not hasOpenInside then
+        return false
+    end
+
+    -- Skip if an "Open" part is sticking out externally near this cashier in the workspace
+    for _, descendant in ipairs(workspace:GetDescendants()) do
+        if descendant.Name == "Open" and descendant:IsA("BasePart") and not descendant:IsDescendantOf(obj) then
+            if (descendant.Position - part.Position).Magnitude <= 6 then
+                return false
+            end
+        end
+    end
+
     if obj:GetAttribute("Broken") or obj:GetAttribute("Destroyed") then return false end
     if part.Transparency >= 0.9 then return false end
     return true
@@ -238,7 +318,7 @@ end
 local function getCashiers()
     local list = {}
     for _, obj in ipairs(workspace:GetDescendants()) do
-        if (obj.Name == "CA$HIER" or obj.Name == "CA$HIERS") and isTargetValid(obj) then
+        if isTargetValid(obj) then
             table.insert(list, obj)
         end
     end
@@ -269,7 +349,7 @@ task.spawn(function()
             local cashiers = getCashiers()
             if #cashiers == 0 then
                 floatInVoid()
-                task.wait(1.2)
+                task.wait(1.0)
             else
                 for _, cashier in ipairs(cashiers) do
                     if not humanoid or humanoid.Health <= 0 then break end
@@ -280,6 +360,15 @@ task.spawn(function()
                     for i = 1, 6 do
                         clickMoneyDrops()
                         task.wait(0.1)
+                    end
+
+                    visitedCount += 1
+                    if visitedCount % 5 == 0 then
+                        sendWebhook(
+                            "Farm Progress",
+                            "**Cashiers Visited:** " .. visitedCount ..
+                            "\n**DHC Earned:** $" .. (getDHC() - startDHC)
+                        )
                     end
 
                     floatInVoid()
@@ -303,4 +392,4 @@ task.spawn(function()
     end
 end)
 
-print("[Srilangish] Internal Open Part Cashier Autofarm Loaded")
+print("[Srilangish] Void Fallback Cashier Autofarm Loaded")
